@@ -1,6 +1,8 @@
 package io.anserini.search;
 
 import org.kohsuke.args4j.Option;
+import org.kohsuke.args4j.spi.BooleanOptionHandler;
+import org.kohsuke.args4j.spi.StringArrayOptionHandler;
 
 public class SearchArgs {
 
@@ -68,7 +70,24 @@ public class SearchArgs {
   @Option(name = "-featureFile", metaVar = "[file]", required = false, usage = "output for the feature vector file")
   public String featureFile = "";
 
-  @Option(name = "-qrels", metaVar = "[file]", required = false, usage = "patht to the qrels file, needed for feature vectors")
+  @Option(name = "-eval", required = false, depends={"-qrels"}, usage = "whether evaluate the search results after retrieval. -qrels must be provided.")
+  public boolean eval = false;
+
+  @Option(name = "-evalm", required = false, depends={"-eval", "-qrels"}, handler = StringArrayOptionHandler.class,
+          usage = "The metric to be printed. Valid ones are: "
+          +"[num_ret|num_rel|num_rel_ret|map|p[.cutoff]|ndcg[.cutoff]]. "
+          +"Several metrics can be printed at once - use space to separate them. "
+          +"Use \".\" to indicate the cutoff parameter for p (precision), ndcg. "
+          +" For example, -m map p.30 ndcg.20")
+  String[] evalMetrics;
+
+  @Option(name = "-evalq", handler = BooleanOptionHandler.class, depends={"-eval", "-qrels"}, usage = "Print the internal document IDs of documents")
+  boolean evalPerQuery;
+
+  @Option(name = "-evalo", metaVar = "[file]", required = false, depends={"-eval", "-qrels"}, usage = "the output file of eval")
+  public String evalOutput;
+
+  @Option(name = "-qrels", metaVar = "[file]", required = false, usage = "path to the qrels file, needed for eval and feature vectors")
   public String qrels= "";
 
   @Option(name = "-extractors", metaVar = "[file]", required = false, usage = "Optional definition to feature extractors")

@@ -17,6 +17,9 @@ package io.anserini.search;
  * limitations under the License.
  */
 
+import io.anserini.eval.BatchEval;
+import io.anserini.eval.QueryJudgments;
+import io.anserini.eval.RankingResults;
 import io.anserini.ltr.WebCollectionLtrDataGenerator;
 import io.anserini.ltr.feature.FeatureExtractors;
 import io.anserini.rerank.IdentityReranker;
@@ -30,8 +33,8 @@ import io.anserini.util.Qrels;
 import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.CharArraySet;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queryparser.classic.ParseException;
@@ -51,17 +54,12 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.OptionHandlerFilter;
 import org.kohsuke.args4j.ParserProperties;
 
-import java.io.Closeable;
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.PrintWriter;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
-import java.util.Map;
-import java.util.SortedMap;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static io.anserini.index.generator.LuceneDocumentGenerator.FIELD_BODY;
@@ -75,6 +73,12 @@ import static io.anserini.index.generator.LuceneDocumentGenerator.FIELD_ID;
 public final class SearchWebCollection implements Closeable {
 
   private static final Logger LOG = LogManager.getLogger(SearchWebCollection.class);
+
+  public static String[] defaultMetrics = new String[] {
+    "num_ret", "num_rel", "num_rel_ret", "map",
+    "p.5", "p.10", "p.20", "p.30",
+    "ndcg.10", "ndcg.20"
+  };
 
   private final IndexReader reader;
 
@@ -158,6 +162,57 @@ public final class SearchWebCollection implements Closeable {
     search(topics, submissionFile, similarity, numHits, cascade, false, false);
   }
 
+  class EvalBundle {
+    public String format;
+    public Map<String, Double> evals;
+    public double aggregated;
+
+    public EvalBundle(String format, Map<String, Double> evals, double aggregated) {
+      this.format = format;
+      this.evals = evals;
+      this.aggregated = aggregated;
+    }
+  }
+
+  public void eval(String runFile, String qrelFile, String[] metrics,
+                   boolean perQuery, String evalOutput) throws IOException {
+    Map<String, EvalBundle> allEvals;
+    RankingResults rr = new RankingResults(runFile);
+    QueryJudgments qj = new QueryJudgments(qrelFile);
+    allEvals = new TreeMap<>();
+    for (String metric : metrics) {
+      BatchEval bm = new BatchEval(metric);
+      Map<String, Double> evals = bm.evaluate(rr, qj);
+      double aggregated = bm.getAggregated();
+      String format = bm.getFormat();
+      allEvals.put(metric, new EvalBundle(format, evals, aggregated));
+    }
+
+    String format = "%1$-22s\t%2$s\t%3$";
+    PrintStream ps;
+    if (evalOutput != null) {
+      ps = new PrintStream(new FileOutputStream(evalOutput));
+    } else {
+      ps = System.out;
+    }
+    if (perQuery) {
+      String anyMetric = metrics[0];
+      Set<String> querySet = allEvals.get(anyMetric).evals.keySet();
+      String[] queries = querySet.toArray(new String[querySet.size()]);
+      for (String query : queries) {
+        for (String metric : metrics) {
+          String formattedOutput = format + allEvals.get(metric).format + "\n";
+          ps.format(formattedOutput, metric, query, allEvals.get(metric).evals.get(query));
+        }
+      }
+    }
+    for (String metric : metrics) {
+      String formattedOutput = format + allEvals.get(metric).format + "\n";
+      ps.format(formattedOutput, metric, "all", allEvals.get(metric).aggregated);
+    }
+    ps.close();
+  }
+
   public static void main(String[] args) throws Exception {
 
     SearchArgs searchArgs = new SearchArgs();
@@ -231,5 +286,15 @@ public final class SearchWebCollection implements Closeable {
     searcher.close();
     final long durationMillis = TimeUnit.MILLISECONDS.convert(System.nanoTime() - start, TimeUnit.NANOSECONDS);
     LOG.info("Total " + topics.size() + " topics searched in " + DurationFormatUtils.formatDuration(durationMillis, "HH:mm:ss"));
+
+    if (searchArgs.eval) {
+      String[] metrics = searchArgs.evalMetrics == null ? defaultMetrics : searchArgs.evalMetrics;
+      LOG.info("-eval option enabled...start evaluating the result...");
+      LOG.info("qrels path: "+searchArgs.qrels);
+      LOG.info("metrics: "+String.join(",", metrics));
+      LOG.info("evaluate every query: "+searchArgs.evalPerQuery);
+      LOG.info("eval output: "+(searchArgs.evalOutput == null ? "System.out" : searchArgs.evalOutput));
+      searcher.eval(searchArgs.output, searchArgs.qrels, metrics, searchArgs.evalPerQuery, searchArgs.evalOutput);
+    }
   }
 }
