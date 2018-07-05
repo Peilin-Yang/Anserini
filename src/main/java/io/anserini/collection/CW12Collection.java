@@ -17,7 +17,6 @@
 package io.anserini.collection;
 
 import io.anserini.document.ClueWeb12WarcRecord;
-import io.anserini.document.SourceDocumentResultWrapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -49,7 +48,7 @@ public class CW12Collection extends WarcCollection {
   }
 
   @Override
-  public Collection.FileSegment createFileSegment(Path p) throws IOException {
+  public FileSegment createFileSegment(Path p) throws IOException {
     return new FileSegment(p);
   }
 }
