@@ -1,8 +1,7 @@
 language: java
-before_install: 
+install: 
   - pip install --upgrade setuptools
   - pip install --upgrade Cython
   - pip install --upgrade pyjnius 
-install: true
 jdk:
   - oraclejdk8
