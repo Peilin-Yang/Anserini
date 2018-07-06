@@ -8,5 +8,4 @@ jdk:
   - oraclejdk8
 script:
   - mvn test
-  - ls
   - python simple_searcher_test.py
