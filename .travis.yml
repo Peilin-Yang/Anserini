@@ -6,3 +6,5 @@ before_install:
 install: true
 jdk:
   - oraclejdk8
+after_script:
+  python simple_searcher_test.py
